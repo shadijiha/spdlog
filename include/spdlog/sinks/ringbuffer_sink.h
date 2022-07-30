@@ -62,14 +62,6 @@ public:
             q_.pop_front();
     }
 
-    void clear()
-    {
-        std::lock_guard<Mutex> lock(base_sink<Mutex>::mutex_);
-
-        while (!q_.empty())
-            q_.pop_front();
-    }
-
 protected:
     void sink_it_(const details::log_msg &msg) override
     {
