@@ -80,12 +80,21 @@ option(SPDLOG_BUILD_WARNINGS "Enable compiler warnings" OFF)
 
 # install options
 option(SPDLOG_INSTALL "Generate the install target" ${SPDLOG_MASTER_PROJECT})
+option(SPDLOG_USE_STD_FORMAT "Use std::format instead of fmt library. No compile-time format string checking." OFF)
 option(SPDLOG_FMT_EXTERNAL "Use external fmt library instead of bundled" OFF)
 option(SPDLOG_FMT_EXTERNAL_HO "Use external fmt header-only library instead of bundled" OFF)
 option(SPDLOG_NO_EXCEPTIONS "Compile with -fno-exceptions. Call abort() on any spdlog exceptions" OFF)
 
 if(SPDLOG_FMT_EXTERNAL AND SPDLOG_FMT_EXTERNAL_HO)
     message(FATAL_ERROR "SPDLOG_FMT_EXTERNAL and SPDLOG_FMT_EXTERNAL_HO are mutually exclusive")
+endif()
+
+if(SPDLOG_USE_STD_FORMAT AND SPDLOG_FMT_EXTERNAL_HO)
+    message(FATAL_ERROR "SPDLOG_USE_STD_FORMAT and SPDLOG_FMT_EXTERNAL_HO are mutually exclusive")
+endif()
+
+if(SPDLOG_USE_STD_FORMAT AND SPDLOG_FMT_EXTERNAL)
+    message(FATAL_ERROR "SPDLOG_USE_STD_FORMAT and SPDLOG_FMT_EXTERNAL are mutually exclusive")
 endif()
 
 # misc tweakme options
@@ -126,11 +135,11 @@ endif()
 find_package(Threads REQUIRED)
 message(STATUS "Build type: " ${CMAKE_BUILD_TYPE})
 # ---------------------------------------------------------------------------------------
-# Static/Shared library (shared not supported in windows yet)
+# Static/Shared library
 # ---------------------------------------------------------------------------------------
 set(SPDLOG_SRCS src/spdlog.cpp src/stdout_sinks.cpp src/color_sinks.cpp src/file_sinks.cpp src/async.cpp src/cfg.cpp)
 
-if(NOT SPDLOG_FMT_EXTERNAL AND NOT SPDLOG_FMT_EXTERNAL_HO)
+if(NOT SPDLOG_USE_STD_FORMAT AND NOT SPDLOG_FMT_EXTERNAL AND NOT SPDLOG_FMT_EXTERNAL_HO)
     list(APPEND SPDLOG_SRCS src/fmt.cpp)
 endif()
 
@@ -145,7 +154,7 @@ if(SPDLOG_BUILD_SHARED OR BUILD_SHARED_LIBS)
         target_compile_options(spdlog PUBLIC $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<NOT:$<COMPILE_LANGUAGE:CUDA>>>:/wd4251
                                              /wd4275>)
     endif()
-    if(NOT SPDLOG_FMT_EXTERNAL AND NOT SPDLOG_FMT_EXTERNAL_HO)
+    if(NOT SPDLOG_USE_STD_FORMAT AND NOT SPDLOG_FMT_EXTERNAL AND NOT SPDLOG_FMT_EXTERNAL_HO)
         target_compile_definitions(spdlog PRIVATE FMT_EXPORT PUBLIC FMT_SHARED)
     endif()
 else()
@@ -160,7 +169,7 @@ target_include_directories(spdlog PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST
 target_link_libraries(spdlog PUBLIC Threads::Threads)
 spdlog_enable_warnings(spdlog)
 
-set_target_properties(spdlog PROPERTIES VERSION ${SPDLOG_VERSION} SOVERSION ${SPDLOG_VERSION_MAJOR})
+set_target_properties(spdlog PROPERTIES VERSION ${SPDLOG_VERSION} SOVERSION ${SPDLOG_VERSION_MAJOR}.${SPDLOG_VERSION_MINOR})
 set_target_properties(spdlog PROPERTIES DEBUG_POSTFIX d)
 
 if(COMMAND target_precompile_headers AND SPDLOG_ENABLE_PCH)
@@ -222,7 +231,8 @@ foreach(
     SPDLOG_NO_THREAD_ID
     SPDLOG_NO_TLS
     SPDLOG_NO_ATOMIC_LEVELS
-    SPDLOG_DISABLE_DEFAULT_LOGGER)
+    SPDLOG_DISABLE_DEFAULT_LOGGER
+    SPDLOG_USE_STD_FORMAT)
     if(${SPDLOG_OPTION})
         target_compile_definitions(spdlog PUBLIC ${SPDLOG_OPTION})
         target_compile_definitions(spdlog_header_only INTERFACE ${SPDLOG_OPTION})
@@ -231,6 +241,11 @@ endforeach()
 
 if(SPDLOG_NO_EXCEPTIONS AND NOT MSVC)
     target_compile_options(spdlog PRIVATE -fno-exceptions)
+endif()
+
+if(SPDLOG_USE_STD_FORMAT)
+    set(CMAKE_CXX_STANDARD 20)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
 
 # ---------------------------------------------------------------------------------------
@@ -280,7 +295,7 @@ if(SPDLOG_INSTALL)
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-    if(NOT SPDLOG_FMT_EXTERNAL AND NOT SPDLOG_FMT_EXTERNAL_HO)
+    if(NOT SPDLOG_USE_STD_FORMAT AND NOT SPDLOG_FMT_EXTERNAL AND NOT SPDLOG_FMT_EXTERNAL_HO)
         install(DIRECTORY include/${PROJECT_NAME}/fmt/bundled/
                 DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}/fmt/bundled/")
     endif()
@@ -288,6 +303,16 @@ if(SPDLOG_INSTALL)
     # ---------------------------------------------------------------------------------------
     # Install pkg-config file
     # ---------------------------------------------------------------------------------------
+    if (IS_ABSOLUTE "${CMAKE_INSTALL_INCLUDEDIR}")
+        set(PKG_CONFIG_INCLUDEDIR "${CMAKE_INSTALL_INCLUDEDIR}")
+    else()
+        set(PKG_CONFIG_INCLUDEDIR "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
+    endif()
+    if (IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
+        set(PKG_CONFIG_LIBDIR "${CMAKE_INSTALL_LIBDIR}")
+    else()
+        set(PKG_CONFIG_LIBDIR "\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}")
+    endif()
     get_target_property(PKG_CONFIG_DEFINES spdlog INTERFACE_COMPILE_DEFINITIONS)
     string(REPLACE ";" " -D" PKG_CONFIG_DEFINES "${PKG_CONFIG_DEFINES}")
     string(CONCAT PKG_CONFIG_DEFINES "-D" "${PKG_CONFIG_DEFINES}")

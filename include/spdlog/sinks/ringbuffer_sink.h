@@ -50,9 +50,16 @@ public:
         {
             memory_buf_t formatted;
             base_sink<Mutex>::formatter_->format(q_.at(i), formatted);
-            ret.push_back(fmt::to_string(formatted));
+            ret.push_back(std::move(SPDLOG_BUF_TO_STRING(formatted)));
         }
         return ret;
+    }
+    
+    void clear()    {
+        std::lock_guard<Mutex> lock(base_sink<Mutex>::mutex_);
+        
+        while(!q_.empty())
+            q_.pop_front();
     }
 
     void clear()
